@@ -15,8 +15,8 @@ router.register(r'places', PlaceViewSet)
 router.register(r'visits', VisitViewSet)
 
 urlpatterns = [
-    path('api/', include(router.urls)),
-    path('api/register/', RegisterView.as_view(), name='register'),
-    path('api/token/', MyTokenObtainPairView.as_view(), name='token_obtain_pair'),
-    path('api/token/refresh/', TokenRefreshView.as_view(), name='token_refresh'),
+    path('', include(router.urls)),
+    path('register', RegisterView.as_view(), name='register'),
+    path('token', MyTokenObtainPairView.as_view(), name='token_obtain_pair'),
+    path('refresh', TokenRefreshView.as_view(), name='token_refresh'),
 ]

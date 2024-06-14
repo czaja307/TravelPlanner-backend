@@ -40,10 +40,11 @@ INSTALLED_APPS = [
     'rest_framework',
     'rest_framework_simplejwt',
     'api',
-    'drf_yasg',
+    'drf_spectacular',
 ]
 
 REST_FRAMEWORK = {
+    'DEFAULT_SCHEMA_CLASS': 'drf_spectacular.openapi.AutoSchema',
     'DEFAULT_AUTHENTICATION_CLASSES': (
         'rest_framework_simplejwt.authentication.JWTAuthentication',
     ),
@@ -68,6 +69,21 @@ SIMPLE_JWT = {
     'AUTH_TOKEN_CLASSES': ('rest_framework_simplejwt.tokens.AccessToken',),
     'TOKEN_TYPE_CLAIM': 'token_type',
     'JTI_CLAIM': 'jti',
+}
+
+SPECTACULAR_SETTINGS = {
+    'TITLE': 'Travel Planner API',
+    'DESCRIPTION': 'API for Travel Planner',
+    'VERSION': '1.0.0',
+    'CONTACT': {
+        'name': 'Apolonia Abramowicz & Jakub Czajkowski',
+        'email': '272709@student.pwr.edu.pl',
+    },
+    'LICENSE': {
+        'name': 'BSD License',
+        'url': 'https://opensource.org/licenses/BSD-3-Clause',
+    },
+    'SERVE_INCLUDE_SCHEMA': False,
 }
 
 MIDDLEWARE = [
