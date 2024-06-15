@@ -55,7 +55,7 @@ class PlaceViewSet(viewsets.ModelViewSet):
     permission_classes = [IsAuthenticated]
 
     def get_queryset(self):
-        return self.queryset.filter(travel_plan__user=self.request.user)
+        return self.queryset
 
 
 class VisitViewSet(viewsets.ModelViewSet):
