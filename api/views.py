@@ -1,4 +1,4 @@
-from datetime import datetime, timedelta
+from datetime import timedelta
 
 import openrouteservice.optimization
 from django.conf import settings
@@ -9,7 +9,7 @@ from django.shortcuts import get_object_or_404
 from rest_framework import generics, permissions
 from rest_framework import status
 from rest_framework import viewsets
-from rest_framework.generics import GenericAPIView
+from rest_framework.generics import GenericAPIView, ListAPIView
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework_simplejwt.tokens import RefreshToken
@@ -79,109 +79,132 @@ class OptimizeRouteView(GenericAPIView):
 
     def post(self, request):
         serializer = self.get_serializer(data=request.data)
-        if serializer.is_valid():
-            itinerary_id = serializer.validated_data['itinerary_id']
-            places_data = serializer.validated_data['places']
+        if not serializer.is_valid():
+            return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+        itinerary_id = serializer.validated_data['itinerary_id']
+        places_data = serializer.validated_data['places']
 
-            itinerary = get_object_or_404(Itinerary, pk=itinerary_id)
-            places = []
-            durations = []
+        itinerary = get_object_or_404(Itinerary, pk=itinerary_id)
+        places = []
+        durations = []
 
-            for place_data in places_data:
-                place = get_object_or_404(Place, pk=place_data['place_id'])
-                places.append(place)
-                durations.append(place_data['duration'])
+        for place_data in places_data:
+            place = get_object_or_404(Place, pk=place_data['place_id'])
+            places.append(place)
+            durations.append(place_data['duration'])
 
-            ors_client = openrouteservice.Client(key=settings.OPENROUTESERVICE_API_KEY)
-            coordinates = [(place.longitude, place.latitude) for place in places]
+        ors_client = openrouteservice.Client(key=settings.OPENROUTESERVICE_API_KEY)
+        coordinates = [(place.longitude, place.latitude) for place in places]
 
-            days_count = (itinerary.end_date.date() - itinerary.start_date.date()).days + 1
-            print(itinerary.end_date)
-            print(itinerary.start_date)
-            print(days_count)
-            start_hour_seconds = itinerary.start_hour.hour * 3600 + itinerary.start_hour.minute * 60
-            end_hour_seconds = itinerary.end_hour.hour * 3600 + itinerary.end_hour.minute * 60
+        days_count = (itinerary.end_date.date() - itinerary.start_date.date()).days + 1
+        print(itinerary.end_date)
+        print(itinerary.start_date)
+        print(days_count)
+        start_hour_seconds = itinerary.start_hour.hour * 3600 + itinerary.start_hour.minute * 60
+        end_hour_seconds = itinerary.end_hour.hour * 3600 + itinerary.end_hour.minute * 60
 
-            vehicles = [
-                openrouteservice.optimization.Vehicle(
-                    id=day,
-                    start=coordinates[0],
-                    end=coordinates[0],
-                    time_window=[start_hour_seconds, end_hour_seconds],
-                ) for day in range(days_count)
-            ]
+        vehicles = [
+            openrouteservice.optimization.Vehicle(
+                id=day,
+                start=coordinates[0],
+                end=coordinates[0],
+                time_window=[start_hour_seconds, end_hour_seconds],
+            ) for day in range(days_count)
+        ]
 
-            for vehicle in vehicles:
-                print(vehicle.id, vehicle.start, vehicle.end, vehicle.time_window)
+        for vehicle in vehicles:
+            print(vehicle.id, vehicle.start, vehicle.end, vehicle.time_window)
 
-            jobs = [
-                openrouteservice.optimization.Job(
-                    id=idx,
-                    location=coord,
-                    service=duration * 60  # Duration in seconds
-                ) for idx, (coord, duration) in enumerate(zip(coordinates, durations))
-            ]
+        jobs = [
+            openrouteservice.optimization.Job(
+                id=idx,
+                location=coord,
+                service=duration * 60  # Duration in seconds
+            ) for idx, (coord, duration) in enumerate(zip(coordinates, durations))
+        ]
 
-            optimized_route = openrouteservice.optimization.optimization(
-                ors_client,
-                jobs=jobs,
-                vehicles=vehicles,
-                geometry=True
-            )
+        optimized_route = openrouteservice.optimization.optimization(
+            ors_client,
+            jobs=jobs,
+            vehicles=vehicles,
+            geometry=True
+        )
 
-            print(optimized_route)
+        print(optimized_route)
 
-            # Parse optimized route
-            visits = []
-            for route in optimized_route['routes']:
-                day = route['vehicle'] + 1  # Vehicle ID corresponds to the day (0-indexed)
+        # Parse optimized route
+        visits = []
+        day_geometries = {}
+        for route in optimized_route['routes']:
+            day = route['vehicle'] + 1  # Vehicle ID corresponds to the day (0-indexed)
+            day_geometries[day] = route['geometry']
 
-                # The start date for the current day
-                current_date = itinerary.start_date + timedelta(days=day - 1)
+            # The start date for the current day
+            current_date = itinerary.start_date + timedelta(days=day - 1)
 
-                for step in route['steps']:
-                    if step['type'] == 'job':
-                        place = places[step['job']]
+            for step in route['steps']:
+                if step['type'] == 'job':
+                    place = places[step['job']]
 
-                        # Calculate the start time by adding the arrival time (in seconds) to the start of the day
-                        arrival_seconds = step['arrival']
-                        start_time = str(timedelta(seconds=arrival_seconds))
+                    # Calculate the start time by adding the arrival time (in seconds) to the start of the day
+                    arrival_seconds = step['arrival']
+                    start_time = str(timedelta(seconds=arrival_seconds))
 
-                        visit = Visit(
-                            itinerary=itinerary,
-                            place=place,
-                            day=day,
-                            duration=durations[step['job']],
-                            start_time=start_time
-                        )
-                        visits.append(visit)
+                    visit = Visit(
+                        itinerary=itinerary,
+                        place=place,
+                        day=day,
+                        duration=durations[step['job']],
+                        start_time=start_time
+                    )
+                    visits.append(visit)
 
-            with transaction.atomic():
-                Visit.objects.filter(itinerary=itinerary).delete()
-                Visit.objects.bulk_create(visits)
+        with transaction.atomic():
+            Visit.objects.filter(itinerary=itinerary).delete()
+            Visit.objects.bulk_create(visits)
 
-            response_data = {
-                "itinerary": itinerary_id,
-                "days": []
-            }
+        response_data = {
+            "itinerary": itinerary_id,
+            "days": []
+        }
 
-            days_group = {}
-            for visit in visits:
-                if visit.day not in days_group:
-                    days_group[visit.day] = []
-                days_group[visit.day].append({
-                    "place_name": visit.place.name,
-                    "start_time": visit.start_time,
-                    "duration": visit.duration,
-                    "latitude": visit.place.latitude,
-                    "longitude": visit.place.longitude,
-                })
+        days_group = {}
+        for visit in visits:
+            if visit.day not in days_group:
+                days_group[visit.day] = []
+            days_group[visit.day].append({
+                "place_name": visit.place.name,
+                "start_time": visit.start_time,
+                "duration": visit.duration,
+                "latitude": visit.place.latitude,
+                "longitude": visit.place.longitude,
+                "geometry": visit.geometry,
+            })
 
-            for day, visits in days_group.items():
-                response_data["days"].append({
-                    "day": day,
-                    "visits": visits
-                })
+        for day, visits in days_group.items():
+            response_data["days"].append({
+                "day": day,
+                "visits": visits,
+                "geometry": day_geometries.get(day),
+            })
 
-            return Response(response_data, status=status.HTTP_200_OK)
-        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+        return Response(response_data, status=status.HTTP_200_OK)
+
+
+class ItineraryVisitsView(ListAPIView):
+    serializer_class = VisitSerializer
+
+    def get_queryset(self):
+        itinerary_id = self.kwargs['itinerary_id']
+        itinerary = get_object_or_404(Itinerary, pk=itinerary_id)
+        return Visit.objects.filter(itinerary=itinerary).order_by('day', 'start_time')
+
+    def list(self, request, *args, **kwargs):
+        queryset = self.get_queryset()
+        serializer = self.get_serializer(queryset, many=True)
+        itinerary_id = self.kwargs['itinerary_id']
+        response_data = {
+            "itinerary": itinerary_id,
+            "visits": serializer.data
+        }
+        return Response(response_data, status=status.HTTP_200_OK)

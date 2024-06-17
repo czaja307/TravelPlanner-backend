@@ -54,6 +54,10 @@ class PlaceSerializer(serializers.ModelSerializer):
 
 
 class VisitSerializer(serializers.ModelSerializer):
+    place_name = serializers.CharField(source='place.name', read_only=True)
+    latitude = serializers.FloatField(source='place.latitude', read_only=True)
+    longitude = serializers.FloatField(source='place.longitude', read_only=True)
+
     class Meta:
         model = Visit
         fields = '__all__'
