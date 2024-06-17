@@ -7,6 +7,7 @@ from .validators import validate_longitude, validate_latitude, validate_daterang
 class Itinerary(models.Model):
     user = models.ForeignKey('auth.User', on_delete=models.CASCADE)
     title = models.CharField(max_length=100)
+    destination = models.CharField(max_length=100)
     description = models.TextField()
     start_place_latitude = models.FloatField(validators=[validate_latitude])
     start_place_longitude = models.FloatField(validators=[validate_longitude])

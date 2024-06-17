@@ -21,6 +21,7 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 # See https://docs.djangoproject.com/en/5.0/howto/deployment/checklist/
 
 # SECURITY WARNING: keep the secret key used in production secret!
+# TODO: change in production
 SECRET_KEY = 'django-insecure-d1x-erjb4&uj0j&4)kp3zei_fn2asbu3=^mi+kru4hv#y=e_3x'
 OPENROUTESERVICE_API_KEY = '5b3ce3597851110001cf62488c59cd9465904fb89a06594d4970828b'
 
@@ -59,6 +60,7 @@ REST_FRAMEWORK = {
 }
 
 SIMPLE_JWT = {
+    # TODO: change to 5 minutes
     'ACCESS_TOKEN_LIFETIME': timedelta(minutes=15),
     'REFRESH_TOKEN_LIFETIME': timedelta(days=1),
     'ROTATE_REFRESH_TOKENS': False,
