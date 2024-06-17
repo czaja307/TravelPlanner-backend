@@ -95,6 +95,7 @@ class OptimizeRouteView(GenericAPIView):
 
         ors_client = openrouteservice.Client(key=settings.OPENROUTESERVICE_API_KEY)
         coordinates = [(place.longitude, place.latitude) for place in places]
+        start_coordinates = (itinerary.start_place_longitude, itinerary.start_place_latitude)
 
         days_count = (itinerary.end_date.date() - itinerary.start_date.date()).days + 1
         print(itinerary.end_date)
@@ -106,8 +107,8 @@ class OptimizeRouteView(GenericAPIView):
         vehicles = [
             openrouteservice.optimization.Vehicle(
                 id=day,
-                start=coordinates[0],
-                end=coordinates[0],
+                start=start_coordinates,
+                end=start_coordinates,
                 time_window=[start_hour_seconds, end_hour_seconds],
             ) for day in range(days_count)
         ]
