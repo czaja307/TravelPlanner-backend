@@ -62,7 +62,6 @@ class Visit(models.Model):
     day = models.PositiveIntegerField()
     duration = models.PositiveIntegerField()
     start_time = models.TimeField()
-    geometry = models.TextField(blank=True, null=True)
 
     class Meta:
         unique_together = ('itinerary', 'day', 'place')

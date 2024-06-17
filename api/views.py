@@ -98,9 +98,6 @@ class OptimizeRouteView(GenericAPIView):
         start_coordinates = (itinerary.start_place_longitude, itinerary.start_place_latitude)
 
         days_count = (itinerary.end_date.date() - itinerary.start_date.date()).days + 1
-        print(itinerary.end_date)
-        print(itinerary.start_date)
-        print(days_count)
         start_hour_seconds = itinerary.start_hour.hour * 3600 + itinerary.start_hour.minute * 60
         end_hour_seconds = itinerary.end_hour.hour * 3600 + itinerary.end_hour.minute * 60
 
@@ -131,7 +128,8 @@ class OptimizeRouteView(GenericAPIView):
             geometry=True
         )
 
-        print(optimized_route)
+        if settings.DEBUG:
+            print(optimized_route)
 
         # Parse optimized route
         visits = []
@@ -179,7 +177,6 @@ class OptimizeRouteView(GenericAPIView):
                 "duration": visit.duration,
                 "latitude": visit.place.latitude,
                 "longitude": visit.place.longitude,
-                "geometry": visit.geometry,
             })
 
         for day, visits in days_group.items():
