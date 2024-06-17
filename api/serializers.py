@@ -57,3 +57,15 @@ class VisitSerializer(serializers.ModelSerializer):
     class Meta:
         model = Visit
         fields = '__all__'
+
+
+class PlaceDurationSerializer(serializers.Serializer):
+    place_id = serializers.IntegerField()
+    duration = serializers.FloatField()  # Duration in hours
+
+
+class OptimizeRouteSerializer(serializers.Serializer):
+    itinerary_id = serializers.IntegerField()
+    places = serializers.ListField(
+        child=PlaceDurationSerializer()
+    )

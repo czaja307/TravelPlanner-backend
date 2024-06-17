@@ -8,8 +8,8 @@ class Itinerary(models.Model):
     user = models.ForeignKey('auth.User', on_delete=models.CASCADE)
     title = models.CharField(max_length=100)
     description = models.TextField()
-    start_place_longitude = models.FloatField(validators=[validate_longitude])
     start_place_latitude = models.FloatField(validators=[validate_latitude])
+    start_place_longitude = models.FloatField(validators=[validate_longitude])
     start_date = models.DateTimeField()
     end_date = models.DateTimeField()
     start_hour = models.TimeField()
@@ -43,8 +43,8 @@ class Place(models.Model):
     name = models.CharField(max_length=100)
     description = models.TextField()
     address = models.CharField(max_length=255)
-    longitude = models.FloatField()
     latitude = models.FloatField()
+    longitude = models.FloatField()
     category = models.CharField(
         max_length=50,
         choices=PlaceCategory.choices,
@@ -60,6 +60,7 @@ class Visit(models.Model):
     place = models.ForeignKey(Place, on_delete=models.CASCADE, related_name='visits')
     day = models.PositiveIntegerField()
     duration = models.PositiveIntegerField()
+    start_time = models.TimeField()
 
     class Meta:
         unique_together = ('itinerary', 'day', 'place')
