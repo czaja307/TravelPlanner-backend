@@ -2,7 +2,6 @@ from datetime import timedelta
 
 import openrouteservice.optimization
 from django.conf import settings
-from django.contrib.auth.hashers import make_password
 from django.contrib.auth.models import User
 from django.db import transaction
 from django.shortcuts import get_object_or_404
@@ -63,6 +62,23 @@ class PlaceViewSet(viewsets.ModelViewSet):
     def get_queryset(self):
         return self.queryset
 
+    def create(self, request, *args, **kwargs):
+        data = request.data
+        name = data.get('name')
+        latitude = data.get('latitude')
+        longitude = data.get('longitude')
+
+        # Check if a place with the same name, latitude, and longitude exists
+        place, created = Place.objects.get_or_create(
+            name=name,
+            latitude=latitude,
+            longitude=longitude,
+            defaults=data
+        )
+
+        serializer = self.get_serializer(place)
+        return Response(serializer.data, status=status.HTTP_201_CREATED if created else status.HTTP_200_OK)
+
 
 class VisitViewSet(viewsets.ModelViewSet):
     queryset = Visit.objects.all()
@@ -96,7 +112,7 @@ class OptimizeRouteView(GenericAPIView):
         coordinates = [(place.longitude, place.latitude) for place in places]
         start_coordinates = (itinerary.start_place_longitude, itinerary.start_place_latitude)
 
-        days_count = (itinerary.end_date.date() - itinerary.start_date.date()).days + 1
+        days_count = (itinerary.end_date - itinerary.start_date).days + 1
         start_hour_seconds = itinerary.start_hour.hour * 3600 + itinerary.start_hour.minute * 60
         end_hour_seconds = itinerary.end_hour.hour * 3600 + itinerary.end_hour.minute * 60
 
