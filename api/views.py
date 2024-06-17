@@ -28,7 +28,6 @@ class RegisterView(generics.CreateAPIView):
 
     def post(self, request, *args, **kwargs):
         data = request.data.copy()
-        data['password'] = make_password(data['password'])
         serializer = self.get_serializer(data=data)
         serializer.is_valid(raise_exception=True)
         user = serializer.save()

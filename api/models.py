@@ -52,6 +52,9 @@ class Place(models.Model):
         default=PlaceCategory.OTHER,
     )
 
+    class Meta:
+        unique_together = ('name', 'latitude', 'longitude')
+
     def __str__(self):
         return self.name
 
