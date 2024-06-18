@@ -90,6 +90,11 @@ class VisitViewSet(viewsets.ModelViewSet):
 
 
 class OptimizeRouteView(GenericAPIView):
+    # status codes:
+    # 0 - OK
+    # 1 - too many places (discarded places)
+    # 2 - too few places (unused vehicles)
+    # 3 - other optimization problem
     serializer_class = OptimizeRouteSerializer
 
     def post(self, request):
@@ -112,6 +117,11 @@ class OptimizeRouteView(GenericAPIView):
         coordinates = [(place.longitude, place.latitude) for place in places]
         start_coordinates = (itinerary.start_place_longitude, itinerary.start_place_latitude)
 
+        print(itinerary.end_date)
+        print(type(itinerary.end_date))
+        print(itinerary.start_date)
+        print(type(itinerary.start_date))
+        print(itinerary.end_date - itinerary.start_date)
         days_count = (itinerary.end_date - itinerary.start_date).days + 1
         start_hour_seconds = itinerary.start_hour.hour * 3600 + itinerary.start_hour.minute * 60
         end_hour_seconds = itinerary.end_hour.hour * 3600 + itinerary.end_hour.minute * 60
@@ -143,8 +153,26 @@ class OptimizeRouteView(GenericAPIView):
             geometry=True
         )
 
-        if settings.DEBUG:
-            print(optimized_route)
+        if 'error' in optimized_route:
+            return Response({"error": optimized_route['error']}, status=status.HTTP_400_BAD_REQUEST)
+
+        # Initialize status code
+        status_code = 0
+
+        # Check for unused vehicles
+        used_vehicles = set(route['vehicle'] for route in optimized_route['routes'])
+        unused_vehicles = len(used_vehicles) < len(vehicles)
+
+        # Check for discarded places
+        unassigned_jobs = optimized_route.get('unassigned', {})
+        discarded_places = bool(unassigned_jobs)
+
+        if unused_vehicles and discarded_places:
+            status_code = 3
+        elif discarded_places:
+            status_code = 1
+        elif unused_vehicles:
+            status_code = 2
 
         # Parse optimized route
         visits = []
@@ -152,9 +180,6 @@ class OptimizeRouteView(GenericAPIView):
         for route in optimized_route['routes']:
             day = route['vehicle'] + 1  # Vehicle ID corresponds to the day (0-indexed)
             day_geometries[day] = route['geometry']
-
-            # The start date for the current day
-            current_date = itinerary.start_date + timedelta(days=day - 1)
 
             for step in route['steps']:
                 if step['type'] == 'job':
@@ -173,11 +198,13 @@ class OptimizeRouteView(GenericAPIView):
                     )
                     visits.append(visit)
 
+        # Save visits in a transaction
         with transaction.atomic():
             Visit.objects.filter(itinerary=itinerary).delete()
             Visit.objects.bulk_create(visits)
 
         response_data = {
+            "status": status_code,
             "itinerary": itinerary_id,
             "days": []
         }
