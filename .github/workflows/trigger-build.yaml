@@ -1,0 +1,22 @@
+# .github/workflows/trigger_build.yml
+
+name: Trigger Build on Caprover
+
+on:
+  push:
+    branches:
+      - master
+
+jobs:
+  trigger_build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Set up environment variables
+        env:
+          CAPTAIN_TOKEN: ${{ secrets.CAPTAIN_TOKEN }}
+        run: |
+          curl -X POST \
+          -H "Content-Type: application/json" \
+          -d '{"namespace": "captain"}' \
+          "https://captain.sharkserver.kowalinski.dev/api/v2/user/apps/webhooks/triggerbuild?namespace=captain&token=${CAPTAIN_TOKEN}"
