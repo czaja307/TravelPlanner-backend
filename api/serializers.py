@@ -33,11 +33,13 @@ class ItinerarySerializer(serializers.ModelSerializer):
         model = Itinerary
         fields = '__all__'
 
-    def validate_start_place_longitude(self, value):
+    @staticmethod
+    def validate_start_place_longitude(value):
         validate_longitude(value)
         return value
 
-    def validate_start_place_latitude(self, value):
+    @staticmethod
+    def validate_start_place_latitude(value):
         validate_latitude(value)
         return value
 

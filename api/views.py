@@ -142,7 +142,8 @@ class OptimizeRouteView(GenericAPIView):
 
         return Response(response_data, status=status.HTTP_200_OK)
 
-    def validate_and_fetch(self, itinerary_id, places_data):
+    @staticmethod
+    def validate_and_fetch(itinerary_id, places_data):
         itinerary = get_object_or_404(Itinerary, pk=itinerary_id)
         places = []
         durations = []
@@ -154,7 +155,8 @@ class OptimizeRouteView(GenericAPIView):
 
         return itinerary, places, durations
 
-    def create_vehicles(self, itinerary, days_count):
+    @staticmethod
+    def create_vehicles(itinerary, days_count):
         start_coordinates = (itinerary.start_place_longitude, itinerary.start_place_latitude)
         start_hour_seconds = itinerary.start_hour.hour * 3600 + itinerary.start_hour.minute * 60
         end_hour_seconds = itinerary.end_hour.hour * 3600 + itinerary.end_hour.minute * 60
@@ -169,7 +171,8 @@ class OptimizeRouteView(GenericAPIView):
         ]
         return vehicles
 
-    def create_jobs(self, places, durations):
+    @staticmethod
+    def create_jobs(places, durations):
         coordinates = [(place.longitude, place.latitude) for place in places]
         jobs = [
             openrouteservice.optimization.Job(
@@ -212,7 +215,8 @@ class OptimizeRouteView(GenericAPIView):
 
         return optimized_route, status_code
 
-    def parse_optimized_route(self, itinerary, optimized_route, places, durations, start_day_offset):
+    @staticmethod
+    def parse_optimized_route(itinerary, optimized_route, places, durations, start_day_offset):
         visits = []
         day_geometries = {}
         for route in optimized_route['routes']:
@@ -238,7 +242,8 @@ class OptimizeRouteView(GenericAPIView):
 
         return visits, day_geometries
 
-    def save_visits_and_routes(self, itinerary, visits, all_day_geometries):
+    @staticmethod
+    def save_visits_and_routes(itinerary, visits, all_day_geometries):
         with transaction.atomic():
             # Delete existing visits and routes
             Visit.objects.filter(itinerary=itinerary).delete()
@@ -254,7 +259,8 @@ class OptimizeRouteView(GenericAPIView):
             ]
             DailyRoute.objects.bulk_create(daily_routes)
 
-    def prepare_response_data(self, itinerary_id, visits, total_days, all_day_geometries):
+    @staticmethod
+    def prepare_response_data(itinerary_id, visits, total_days, all_day_geometries):
         response_data = {
             "itinerary": itinerary_id,
             "days": []
