@@ -10,7 +10,8 @@ https://docs.djangoproject.com/en/5.0/topics/settings/
 For the full list of settings and their values, see
 https://docs.djangoproject.com/en/5.0/ref/settings/
 """
-
+import os
+import venv
 from datetime import timedelta
 from pathlib import Path
 
@@ -21,11 +22,13 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 # See https://docs.djangoproject.com/en/5.0/howto/deployment/checklist/
 
 # SECURITY WARNING: keep the secret key used in production secret!
-# TODO: change in production
-SECRET_KEY = 'django-insecure-d1x-erjb4&uj0j&4)kp3zei_fn2asbu3=^mi+kru4hv#y=e_3x'
-OPENROUTESERVICE_API_KEY = '5b3ce3597851110001cf62488c59cd9465904fb89a06594d4970828b'
+SECRET_KEY = os.environ['DJANGO_SECRET_KEY']
+OPENROUTESERVICE_API_KEY = os.environ['OPENROUTESERVICE_API_KEY']
+MAPBOX_API_KEY = os.environ['MAPBOX_API_KEY']
+MAPBOX_API_KEY_PUBLIC = os.environ['MAPBOX_API_KEY_PUBLIC']
 
 # SECURITY WARNING: don't run with debug turned on in production!
+# TODO: change to False
 DEBUG = True
 
 ALLOWED_HOSTS = []
@@ -176,4 +179,3 @@ STATIC_URL = 'static/'
 # https://docs.djangoproject.com/en/5.0/ref/settings/#default-auto-field
 
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
-
