@@ -90,20 +90,62 @@ class VisitViewSet(viewsets.ModelViewSet):
 
 
 class OptimizeRouteView(GenericAPIView):
-    # status codes:
-    # 0 - OK
-    # 1 - too many places (discarded places)
-    # 2 - too few places (unused vehicles)
-    # 3 - other optimization problem
     serializer_class = OptimizeRouteSerializer
+
+    MAX_VEHICLES_PER_OPTIMIZATION = 3
 
     def post(self, request):
         serializer = self.get_serializer(data=request.data)
         if not serializer.is_valid():
             return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
         itinerary_id = serializer.validated_data['itinerary_id']
         places_data = serializer.validated_data['places']
 
+        itinerary, places, durations = self.validate_and_fetch(itinerary_id, places_data)
+        days_count = (itinerary.end_date - itinerary.start_date).days + 1
+
+        # Calculate the number of segments needed
+        num_segments = -(-days_count // self.MAX_VEHICLES_PER_OPTIMIZATION)
+
+        # Split places and durations based on the number of segments
+        segment_size = len(places) // num_segments + (len(places) % num_segments > 0)
+        segments = [places[i:i + segment_size] for i in range(0, len(places), segment_size)]
+        print(segments)
+        duration_segments = [durations[i:i + segment_size] for i in range(0, len(durations), segment_size)]
+        print(duration_segments)
+
+        visits = []
+        status_codes = []
+        all_day_geometries = {}
+
+        for segment_index, (segment, duration_segment) in enumerate(zip(segments, duration_segments)):
+            segment_days_count = min(days_count - segment_index * self.MAX_VEHICLES_PER_OPTIMIZATION,
+                                     self.MAX_VEHICLES_PER_OPTIMIZATION)
+
+            optimized_route, status_code = self.optimize_segment(itinerary, segment, duration_segment,
+                                                                 segment_days_count)
+
+            print(optimized_route)
+
+            if 'error' in optimized_route:
+                return Response({"error": optimized_route['error']}, status=status.HTTP_400_BAD_REQUEST)
+
+            status_codes.append(status_code)
+            segment_visits, day_geometries = self.parse_optimized_route(itinerary, optimized_route, segment,
+                                                                        duration_segment,
+                                                                        segment_index * self.MAX_VEHICLES_PER_OPTIMIZATION)
+            visits.extend(segment_visits)
+            all_day_geometries.update(day_geometries)
+
+        self.save_visits(itinerary, visits)
+
+        response_data = self.prepare_response_data(itinerary_id, visits, days_count, all_day_geometries)
+        response_data["status"] = max(status_codes)
+
+        return Response(response_data, status=status.HTTP_200_OK)
+
+    def validate_and_fetch(self, itinerary_id, places_data):
         itinerary = get_object_or_404(Itinerary, pk=itinerary_id)
         places = []
         durations = []
@@ -113,16 +155,10 @@ class OptimizeRouteView(GenericAPIView):
             places.append(place)
             durations.append(place_data['duration'])
 
-        ors_client = openrouteservice.Client(key=settings.OPENROUTESERVICE_API_KEY)
-        coordinates = [(place.longitude, place.latitude) for place in places]
-        start_coordinates = (itinerary.start_place_longitude, itinerary.start_place_latitude)
+        return itinerary, places, durations
 
-        print(itinerary.end_date)
-        print(type(itinerary.end_date))
-        print(itinerary.start_date)
-        print(type(itinerary.start_date))
-        print(itinerary.end_date - itinerary.start_date)
-        days_count = (itinerary.end_date - itinerary.start_date).days + 1
+    def create_vehicles(self, itinerary, days_count):
+        start_coordinates = (itinerary.start_place_longitude, itinerary.start_place_latitude)
         start_hour_seconds = itinerary.start_hour.hour * 3600 + itinerary.start_hour.minute * 60
         end_hour_seconds = itinerary.end_hour.hour * 3600 + itinerary.end_hour.minute * 60
 
@@ -134,10 +170,10 @@ class OptimizeRouteView(GenericAPIView):
                 time_window=[start_hour_seconds, end_hour_seconds],
             ) for day in range(days_count)
         ]
+        return vehicles
 
-        for vehicle in vehicles:
-            print(vehicle.id, vehicle.start, vehicle.end, vehicle.time_window)
-
+    def create_jobs(self, places, durations):
+        coordinates = [(place.longitude, place.latitude) for place in places]
         jobs = [
             openrouteservice.optimization.Job(
                 id=idx,
@@ -145,6 +181,12 @@ class OptimizeRouteView(GenericAPIView):
                 service=duration * 60  # Duration in seconds
             ) for idx, (coord, duration) in enumerate(zip(coordinates, durations))
         ]
+        return jobs
+
+    def optimize_segment(self, itinerary, places, durations, days_count):
+        ors_client = openrouteservice.Client(key=settings.OPENROUTESERVICE_API_KEY)
+        vehicles = self.create_vehicles(itinerary, days_count)
+        jobs = self.create_jobs(places, durations)
 
         optimized_route = openrouteservice.optimization.optimization(
             ors_client,
@@ -152,9 +194,6 @@ class OptimizeRouteView(GenericAPIView):
             vehicles=vehicles,
             geometry=True
         )
-
-        if 'error' in optimized_route:
-            return Response({"error": optimized_route['error']}, status=status.HTTP_400_BAD_REQUEST)
 
         # Initialize status code
         status_code = 0
@@ -174,11 +213,13 @@ class OptimizeRouteView(GenericAPIView):
         elif unused_vehicles:
             status_code = 2
 
-        # Parse optimized route
+        return optimized_route, status_code
+
+    def parse_optimized_route(self, itinerary, optimized_route, places, durations, start_day_offset):
         visits = []
         day_geometries = {}
         for route in optimized_route['routes']:
-            day = route['vehicle'] + 1  # Vehicle ID corresponds to the day (0-indexed)
+            day = route['vehicle'] + 1 + start_day_offset  # Adjust for the segment offset
             day_geometries[day] = route['geometry']
 
             for step in route['steps']:
@@ -198,21 +239,22 @@ class OptimizeRouteView(GenericAPIView):
                     )
                     visits.append(visit)
 
-        # Save visits in a transaction
+        return visits, day_geometries
+
+    def save_visits(self, itinerary, visits):
         with transaction.atomic():
             Visit.objects.filter(itinerary=itinerary).delete()
             Visit.objects.bulk_create(visits)
 
+    def prepare_response_data(self, itinerary_id, visits, total_days, all_day_geometries):
         response_data = {
-            "status": status_code,
             "itinerary": itinerary_id,
             "days": []
         }
 
-        days_group = {}
+        days_group = {day: [] for day in range(1, total_days + 1)}
+
         for visit in visits:
-            if visit.day not in days_group:
-                days_group[visit.day] = []
             days_group[visit.day].append({
                 "place_name": visit.place.name,
                 "start_time": visit.start_time,
@@ -225,10 +267,10 @@ class OptimizeRouteView(GenericAPIView):
             response_data["days"].append({
                 "day": day,
                 "visits": visits,
-                "geometry": day_geometries.get(day),
+                "geometry": all_day_geometries.get(day)
             })
 
-        return Response(response_data, status=status.HTTP_200_OK)
+        return response_data
 
 
 class ItineraryVisitsView(ListAPIView):
