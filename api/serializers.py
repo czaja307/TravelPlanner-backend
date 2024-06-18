@@ -2,7 +2,7 @@ from django.contrib.auth.models import User
 from rest_framework import serializers
 from rest_framework_simplejwt.serializers import TokenObtainPairSerializer
 
-from .models import Itinerary, Place, Visit
+from .models import Itinerary, Place, Visit, DailyRoute
 from .validators import validate_longitude, validate_latitude, validate_daterange, validate_timerange
 
 
@@ -73,3 +73,23 @@ class OptimizeRouteSerializer(serializers.Serializer):
     places = serializers.ListField(
         child=PlaceDurationSerializer()
     )
+
+
+class DailyRouteSerializer(serializers.ModelSerializer):
+    itinerary = serializers.PrimaryKeyRelatedField(queryset=Itinerary.objects.all())
+    day = serializers.IntegerField()
+
+    class Meta:
+        model = DailyRoute
+        fields = ['itinerary', 'day', 'geometry']
+        extra_kwargs = {
+            'itinerary': {'validators': []},
+            'day': {'validators': []},
+        }
+
+    def validate(self, attrs):
+        itinerary = attrs.get('itinerary')
+        day = attrs.get('day')
+        if DailyRoute.objects.filter(itinerary=itinerary, day=day).exists():
+            raise serializers.ValidationError(f"A daily route with itinerary {itinerary} and day {day} already exists.")
+        return attrs

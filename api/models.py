@@ -26,7 +26,7 @@ class Itinerary(models.Model):
 
     @property
     def days_count(self):
-        return (self.end_date.date() - self.start_date.date()).days + 1
+        return (self.end_date - self.start_date).days + 1
 
 
 # TODO: adjust to the actual categories
@@ -72,3 +72,16 @@ class Visit(models.Model):
 
     def __str__(self):
         return f"Day {self.day} - {self.place.name}"
+
+
+class DailyRoute(models.Model):
+    itinerary = models.ForeignKey(Itinerary, on_delete=models.CASCADE, related_name='daily_routes')
+    day = models.PositiveIntegerField()
+    geometry = models.TextField()
+
+    class Meta:
+        unique_together = ('itinerary', 'day')
+        ordering = ['itinerary', 'day']
+
+    def __str__(self):
+        return f"Day {self.day} - {self.itinerary.title}"

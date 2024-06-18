@@ -14,9 +14,10 @@ from rest_framework.response import Response
 from rest_framework_simplejwt.tokens import RefreshToken
 from rest_framework_simplejwt.views import TokenObtainPairView
 
-from .models import Itinerary, Place, Visit
+from .models import Itinerary, Place, Visit, DailyRoute
 from .permissions import IsOwner
-from .serializers import ItinerarySerializer, PlaceSerializer, VisitSerializer, OptimizeRouteSerializer
+from .serializers import ItinerarySerializer, PlaceSerializer, VisitSerializer, OptimizeRouteSerializer, \
+    DailyRouteSerializer
 from .serializers import UserSerializer, MyTokenObtainPairSerializer
 
 
@@ -33,7 +34,7 @@ class RegisterView(generics.CreateAPIView):
         refresh = RefreshToken.for_user(user)
         return Response({
             'refresh': str(refresh),
-            'access': str(refresh.access_token),
+            'access': str(refresh),
             'user': UserSerializer(user).data
         }, status=status.HTTP_201_CREATED)
 
@@ -111,9 +112,7 @@ class OptimizeRouteView(GenericAPIView):
         # Split places and durations based on the number of segments
         segment_size = len(places) // num_segments + (len(places) % num_segments > 0)
         segments = [places[i:i + segment_size] for i in range(0, len(places), segment_size)]
-        print(segments)
         duration_segments = [durations[i:i + segment_size] for i in range(0, len(durations), segment_size)]
-        print(duration_segments)
 
         visits = []
         status_codes = []
@@ -126,8 +125,6 @@ class OptimizeRouteView(GenericAPIView):
             optimized_route, status_code = self.optimize_segment(itinerary, segment, duration_segment,
                                                                  segment_days_count)
 
-            print(optimized_route)
-
             if 'error' in optimized_route:
                 return Response({"error": optimized_route['error']}, status=status.HTTP_400_BAD_REQUEST)
 
@@ -138,7 +135,7 @@ class OptimizeRouteView(GenericAPIView):
             visits.extend(segment_visits)
             all_day_geometries.update(day_geometries)
 
-        self.save_visits(itinerary, visits)
+        self.save_visits_and_routes(itinerary, visits, all_day_geometries)
 
         response_data = self.prepare_response_data(itinerary_id, visits, days_count, all_day_geometries)
         response_data["status"] = max(status_codes)
@@ -241,10 +238,21 @@ class OptimizeRouteView(GenericAPIView):
 
         return visits, day_geometries
 
-    def save_visits(self, itinerary, visits):
+    def save_visits_and_routes(self, itinerary, visits, all_day_geometries):
         with transaction.atomic():
+            # Delete existing visits and routes
             Visit.objects.filter(itinerary=itinerary).delete()
+            DailyRoute.objects.filter(itinerary=itinerary).delete()
+
+            # Create new visits
             Visit.objects.bulk_create(visits)
+
+            # Create new daily routes
+            daily_routes = [
+                DailyRoute(itinerary=itinerary, day=day, geometry=geometry)
+                for day, geometry in all_day_geometries.items()
+            ]
+            DailyRoute.objects.bulk_create(daily_routes)
 
     def prepare_response_data(self, itinerary_id, visits, total_days, all_day_geometries):
         response_data = {
@@ -264,10 +272,13 @@ class OptimizeRouteView(GenericAPIView):
             })
 
         for day, visits in days_group.items():
+            day_geometry = all_day_geometries.get(day)
+            route_data = DailyRouteSerializer(
+                DailyRoute(itinerary_id=itinerary_id, day=day, geometry=day_geometry)).data
             response_data["days"].append({
                 "day": day,
                 "visits": visits,
-                "geometry": all_day_geometries.get(day)
+                "geometry": route_data['geometry'] if route_data else None
             })
 
         return response_data
@@ -290,3 +301,33 @@ class ItineraryVisitsView(ListAPIView):
             "visits": serializer.data
         }
         return Response(response_data, status=status.HTTP_200_OK)
+
+
+class RouteViewSet(viewsets.ModelViewSet):
+    queryset = DailyRoute.objects.all()
+    serializer_class = DailyRouteSerializer
+    permission_classes = [IsAuthenticated]
+
+    def get_queryset(self):
+        return self.queryset.filter(itinerary__user=self.request.user)
+
+    def perform_create(self, serializer):
+        serializer.save(itinerary__user=self.request.user)
+
+
+class DailyRouteDetailView(generics.GenericAPIView):
+    serializer_class = DailyRouteSerializer
+
+    def get(self, request, itinerary_id, day):
+        try:
+            itinerary = Itinerary.objects.get(id=itinerary_id)
+        except Itinerary.DoesNotExist:
+            return Response({"error": "Itinerary not found"}, status=status.HTTP_404_NOT_FOUND)
+
+        try:
+            daily_route = DailyRoute.objects.get(itinerary=itinerary, day=day)
+        except DailyRoute.DoesNotExist:
+            return Response({"error": "Daily route not found"}, status=status.HTTP_404_NOT_FOUND)
+
+        serializer = self.get_serializer(daily_route)
+        return Response(serializer.data, status=status.HTTP_200_OK)

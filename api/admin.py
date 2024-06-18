@@ -1,6 +1,6 @@
 from django.contrib import admin
 
-from api.models import Itinerary, Place, Visit
+from api.models import Itinerary, Place, Visit, DailyRoute
 
 
 # Register your models here.
@@ -22,4 +22,11 @@ class PlaceAdmin(admin.ModelAdmin):
 class VisitAdmin(admin.ModelAdmin):
     list_display = ('itinerary', 'place', 'day', 'duration')
     search_fields = ('itinerary__title', 'place__name')
+    list_filter = ('itinerary', 'day')
+
+
+@admin.register(DailyRoute)
+class DailyRouteAdmin(admin.ModelAdmin):
+    list_display = ('itinerary', 'day')
+    search_fields = ('itinerary__title',)
     list_filter = ('itinerary', 'day')
