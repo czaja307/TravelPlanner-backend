@@ -1,6 +1,8 @@
+import uuid
 from datetime import timedelta
 
 import openrouteservice.optimization
+import requests
 from django.conf import settings
 from django.contrib.auth.models import User
 from django.db import transaction
@@ -35,7 +37,7 @@ class RegisterView(generics.CreateAPIView):
         refresh = RefreshToken.for_user(user)
         return Response({
             'refresh': str(refresh),
-            'access': str(refresh),
+            'access': str(refresh.access_token),
             'user': UserSerializer(user).data
         }, status=status.HTTP_201_CREATED)
 
@@ -109,6 +111,7 @@ class OptimizeRouteView(GenericAPIView):
     serializer_class = OptimizeRouteSerializer
 
     MAX_VEHICLES_PER_OPTIMIZATION = 3
+    MINIMUM_REQUIRED_DURATION_PERCENT = 0.9
 
     def post(self, request):
         serializer = self.get_serializer(data=request.data)
@@ -119,6 +122,8 @@ class OptimizeRouteView(GenericAPIView):
         places_data = serializer.validated_data['places']
 
         itinerary, places, durations = self.validate_and_fetch(itinerary_id, places_data)
+        places, durations = self.ensure_minimum_duration(itinerary, places, durations)
+
         days_count = (itinerary.end_date - itinerary.start_date).days + 1
 
         # Calculate the number of segments needed
@@ -156,6 +161,91 @@ class OptimizeRouteView(GenericAPIView):
         response_data["status"] = max(status_codes)
 
         return Response(response_data, status=status.HTTP_200_OK)
+
+    def ensure_minimum_duration(self, itinerary, places, durations):
+        total_duration = sum(durations)
+        available_time = self.calculate_available_trip_time(itinerary)
+        minimum_required_duration = available_time * self.MINIMUM_REQUIRED_DURATION_PERCENT
+
+        if total_duration < minimum_required_duration:
+            required_duration = minimum_required_duration - total_duration
+            new_places, new_durations = self.fetch_additional_places(itinerary, required_duration)
+            places.extend(new_places)
+            durations.extend(new_durations)
+
+        return places, durations
+
+    @staticmethod
+    def calculate_available_trip_time(itinerary):
+        days_count = (itinerary.end_date - itinerary.start_date).days + 1
+        daily_available_time = (itinerary.end_hour.hour * 60 + itinerary.end_hour.minute) - (
+                itinerary.start_hour.hour * 60 + itinerary.start_hour.minute)
+        return days_count * daily_available_time
+
+    @staticmethod
+    def fetch_additional_places(itinerary, required_duration):
+        session_token = str(uuid.uuid4())
+        proximity = f"{itinerary.start_place_longitude},{itinerary.start_place_latitude}"
+        url = (
+            f"https://api.mapbox.com/search/searchbox/v1/suggest"
+            f"?q=museum"
+            f"&access_token={settings.MAPBOX_API_KEY}"
+            f"&language=en"
+            f"&limit=10"
+            f"&types=category,poi"
+            f"&proximity={proximity}"
+            f"&session_token={session_token}"
+        )
+
+        if settings.DEBUG:
+            print(url)
+
+        response = requests.get(url)
+        response.encoding = 'utf-8'
+        response_data = response.json()
+        places = []
+        durations = []
+
+        for result in response_data.get('suggestions', []):
+            if required_duration <= 0:
+                break
+            place_id = result.get('mapbox_id')
+            if not place_id:
+                continue
+
+            # Fetch place details using the Mapbox ID
+            place_detail_url = (
+                f"https://api.mapbox.com/search/searchbox/v1/retrieve/"
+                f"{place_id}"
+                f"?access_token={settings.MAPBOX_API_KEY}"
+                f"&session_token={session_token}"
+            )
+
+            place_response = requests.get(place_detail_url)
+            place_response.encoding = 'utf-8'
+            place_detail_data = place_response.json()
+
+            if settings.DEBUG:
+                print(place_detail_url)
+
+            if result.get('feature_type') == 'poi':
+                coordinates = place_detail_data['features'][0]['geometry']['coordinates']
+
+                place = Place(
+                    name=result['name'],
+                    description='',
+                    address=result.get('place_formatted', ''),
+                    latitude=coordinates[1],
+                    longitude=coordinates[0],
+                    category=",".join(result.get('poi_category_ids'))
+                )
+
+                places.append(place)
+                duration = place.get_estimated_duration()
+                durations.append(duration)
+                required_duration -= duration
+
+        return places, durations
 
     @staticmethod
     def validate_and_fetch(itinerary_id, places_data):
@@ -264,8 +354,24 @@ class OptimizeRouteView(GenericAPIView):
             Visit.objects.filter(itinerary=itinerary).delete()
             DailyRoute.objects.filter(itinerary=itinerary).delete()
 
-            # Create new visits
-            Visit.objects.bulk_create(visits)
+            # Check and save related Place objects first
+            for visit in visits:
+                place, created = Place.objects.get_or_create(
+                    name=visit.place.name,
+                    latitude=visit.place.latitude,
+                    longitude=visit.place.longitude,
+                    defaults={
+                        'description': visit.place.description,
+                        'address': visit.place.address,
+                        'category': visit.place.category,
+                    }
+                )
+                # Assign the saved or fetched place back to the visit
+                visit.place = place
+
+            # Save visits individually to ensure related objects are saved
+            for visit in visits:
+                visit.save()
 
             # Create new daily routes
             daily_routes = [
