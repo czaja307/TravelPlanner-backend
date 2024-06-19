@@ -28,8 +28,7 @@ MAPBOX_API_KEY = os.environ['MAPBOX_API_KEY']
 MAPBOX_API_KEY_PUBLIC = os.environ['MAPBOX_API_KEY_PUBLIC']
 
 # SECURITY WARNING: don't run with debug turned on in production!
-# TODO: change to False
-DEBUG = True
+DEBUG = False
 
 ALLOWED_HOSTS = os.environ.get("DJANGO_ALLOWED_HOSTS").split(" ")
 
