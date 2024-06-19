@@ -65,6 +65,11 @@ class VisitSerializer(serializers.ModelSerializer):
         model = Visit
         fields = '__all__'
 
+    def create(self, validated_data):
+        if 'duration' not in validated_data or validated_data['duration'] is None:
+            validated_data['duration'] = Visit.default_duration
+        return super().create(validated_data)
+
 
 class PlaceIdSerializer(serializers.Serializer):
     place_id = serializers.IntegerField()
