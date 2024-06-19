@@ -69,6 +69,7 @@ class Place(models.Model):
 
 
 class Visit(models.Model):
+    default_duration = 90
     itinerary = models.ForeignKey(Itinerary, on_delete=models.CASCADE, related_name='visits')
     place = models.ForeignKey(Place, on_delete=models.CASCADE, related_name='visits')
     day = models.PositiveIntegerField()
