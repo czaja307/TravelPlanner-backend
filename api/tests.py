@@ -6,10 +6,18 @@ import django
 import pytest
 from django.contrib.auth.models import User
 from django.core.exceptions import ValidationError
+from django.test import RequestFactory
+from django.urls import reverse
+from rest_framework import status
+from rest_framework.test import force_authenticate
+from rest_framework_simplejwt.tokens import RefreshToken
+from rest_framework_simplejwt.views import TokenObtainPairView
 
 from api.models import Itinerary, DailyRoute, Place, Visit
 from api.serializers import DailyRouteSerializer, VisitSerializer, PlaceSerializer, ItinerarySerializer, \
     MyTokenObtainPairSerializer, UserSerializer
+from api.validators import validate_longitude, validate_latitude, validate_daterange, validate_timerange
+from api.views import RegisterView, MyTokenObtainPairView, ItineraryViewSet
 
 os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'your_project.settings')
 django.setup()
@@ -409,3 +417,131 @@ def test_daily_route_serializer(itinerary):
     assert DailyRoute.objects.count() == 1
     assert daily_route.itinerary == itinerary
     assert daily_route.day == 1
+
+
+# Validator tests
+
+def test_validate_longitude():
+    # Valid longitudes
+    validate_longitude(0)
+    validate_longitude(180)
+    validate_longitude(-180)
+
+    # Invalid longitudes
+    with pytest.raises(ValidationError):
+        validate_longitude(180.1)
+    with pytest.raises(ValidationError):
+        validate_longitude(-180.1)
+
+
+def test_validate_latitude():
+    # Valid latitudes
+    validate_latitude(0)
+    validate_latitude(90)
+    validate_latitude(-90)
+
+    # Invalid latitudes
+    with pytest.raises(ValidationError):
+        validate_latitude(90.1)
+    with pytest.raises(ValidationError):
+        validate_latitude(-90.1)
+
+
+def test_validate_daterange():
+    # Valid date range
+    validate_daterange(date(2023, 1, 1), date(2023, 1, 2))
+
+    # Invalid date range
+    with pytest.raises(ValidationError):
+        validate_daterange(date(2023, 1, 2), date(2023, 1, 1))
+
+
+def test_validate_timerange():
+    # Valid time range
+    validate_timerange(time(9, 0), time(18, 0))
+
+    # Invalid time range
+    with pytest.raises(ValidationError):
+        validate_timerange(time(18, 0), time(9, 0))
+
+
+# Test views
+
+
+@pytest.mark.django_db
+def test_obtain_pair_view():
+    user = User.objects.create_user(username='testuser', password='testpassword')
+
+    factory = RequestFactory()
+
+    url = reverse('token_obtain_pair')
+    data = {
+        'username': 'testuser',
+        'password': 'testpassword'
+    }
+    request = factory.post(url, data)
+
+    view = TokenObtainPairView.as_view()
+    response = view(request)
+
+    assert response.status_code == status.HTTP_200_OK
+    assert 'access' in response.data
+    assert 'refresh' in response.data
+
+
+@pytest.fixture
+def user_data():
+    return {
+        'username': 'testuser',
+        'password': 'testpassword',
+    }
+
+
+@pytest.fixture
+def authenticated_user(user_data):
+    user = User.objects.create_user(**user_data)
+    refresh = RefreshToken.for_user(user)
+    user.refresh_token = str(refresh)
+    user.access_token = str(refresh.access_token)
+    return user
+
+
+@pytest.fixture
+def create_itinerary(authenticated_user):
+    return Itinerary.objects.create(user=authenticated_user, title='Test Itinerary', start_place_latitude=0.0,
+                                    start_place_longitude=0.0, start_date=date(2023, 1, 1), end_date=date(2023, 1, 10),
+                                    start_hour=time(9, 0), end_hour=time(18, 0))
+
+
+@pytest.mark.django_db
+def test_register_view():
+    factory = RequestFactory()
+    request = factory.post('/register/',
+                           {'username': 'testuser', 'password': 'testpassword', 'email': 'test@email.com'})
+    view = RegisterView.as_view()
+
+    response = view(request)
+    assert response.status_code == status.HTTP_201_CREATED
+
+
+@pytest.mark.django_db
+def test_my_token_obtain_pair_view(authenticated_user):
+    factory = RequestFactory()
+    request = factory.post('/api/token/', {'username': 'testuser', 'password': 'testpassword'})
+    view = MyTokenObtainPairView.as_view()
+
+    response = view(request)
+    assert response.status_code == status.HTTP_200_OK
+    assert 'refresh' in response.data
+    assert 'access' in response.data
+
+
+@pytest.mark.django_db
+def test_itinerary_view_set(authenticated_user, create_itinerary):
+    factory = RequestFactory()
+    request = factory.get('/itineraries/')
+    force_authenticate(request, user=authenticated_user)
+    view = ItineraryViewSet.as_view({'get': 'list'})
+
+    response = view(request)
+    assert response.status_code == status.HTTP_200_OK
