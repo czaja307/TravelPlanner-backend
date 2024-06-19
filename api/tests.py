@@ -1,12 +1,40 @@
+import os
+import django
+from django.conf import settings
+
+os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'your_project.settings')
+django.setup()
+
 import pytest
 from django.contrib.auth.models import User
 from api.models import Itinerary
 from datetime import date, time
+import uuid
+
 
 @pytest.fixture
 @pytest.mark.django_db
-def user():
-    return User.objects.create_user(username='testuser', password='12345')
+def user(request):
+    # Generowanie unikalnej nazwy użytkownika dla każdego testu
+    unique_username = f'testuser_{uuid.uuid4()}'
+    test_user = User.objects.create_user(username=unique_username, password='12345')
+
+    # Sprawdzenie, czy użytkownik jest zapisany w bazie danych
+    assert test_user.pk is not None, "User was not saved in the database"
+
+    # Czyszczenie po teście
+    def teardown():
+        if test_user.pk is not None:
+            test_user.delete()
+
+    request.addfinalizer(teardown)
+    return test_user
+
+
+# Przykład testu korzystającego z fixture 'user'
+def test_user_creation(user):
+    assert user.username.startswith('testuser_')
+    assert user.check_password('12345')
 
 @pytest.fixture
 @pytest.mark.django_db
@@ -42,7 +70,6 @@ def test_itinerary_days_count(itinerary):
 @pytest.mark.django_db
 def test_itinerary_str_representation(itinerary):
     assert str(itinerary) == 'Test Itinerary'  # Adjust based on your model's __str__ method
-
 
 @pytest.mark.django_db
 def test_itinerary_update(itinerary):
