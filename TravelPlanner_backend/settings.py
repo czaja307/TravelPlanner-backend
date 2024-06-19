@@ -110,6 +110,7 @@ MIDDLEWARE = [
 
 STATICFILES_STORAGE = "whitenoise.storage.CompressedManifestStaticFilesStorage"
 
+
 ROOT_URLCONF = 'TravelPlanner_backend.urls'
 
 TEMPLATES = [
