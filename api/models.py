@@ -1,5 +1,4 @@
 from django.db import models
-from django.utils.translation import gettext_lazy as _
 
 from .validators import validate_longitude, validate_latitude, validate_daterange, validate_timerange
 
@@ -29,34 +28,43 @@ class Itinerary(models.Model):
         return (self.end_date - self.start_date).days + 1
 
 
-# TODO: adjust to the actual categories
-class PlaceCategory(models.TextChoices):
-    HISTORICAL = 'historical', _('Historical')
-    MUSEUM = 'museum', _('Museum')
-    PARK = 'park', _('Park')
-    RESTAURANT = 'restaurant', _('Restaurant')
-    HOTEL = 'hotel', _('Hotel')
-    SHOPPING = 'shopping', _('Shopping')
-    OTHER = 'other', _('Other')
-
-
 class Place(models.Model):
     name = models.CharField(max_length=100)
     description = models.TextField()
     address = models.CharField(max_length=255)
     latitude = models.FloatField()
     longitude = models.FloatField()
-    category = models.CharField(
-        max_length=50,
-        choices=PlaceCategory.choices,
-        default=PlaceCategory.OTHER,
-    )
+    category = models.TextField()
 
     class Meta:
         unique_together = ('name', 'latitude', 'longitude')
 
     def __str__(self):
         return self.name
+
+    def get_estimated_duration(self):
+        default_duration = 90
+
+        # Duration in minutes for each category
+        category_durations = {
+            'cafe': 30,
+            'park': 60,
+            'zoo': 180,
+            'place of worship': 45,
+            'historic': 90,
+            'fast food': 30,
+            'mall': 120,
+            'shop': 60,
+            'museum': 120,
+            'stadium': 90,
+            'nature reserve': 120,
+        }
+
+        for key, duration in category_durations.items():
+            if key in self.category.lower():
+                return duration
+
+        return default_duration
 
 
 class Visit(models.Model):

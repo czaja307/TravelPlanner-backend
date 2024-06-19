@@ -1,22 +1,37 @@
-# .github/workflows/trigger_build.yml
-
-name: Trigger Build on Caprover
+name: Trigger Build on CapRover
 
 on:
   push:
-    branches:
-      - master
+    branches: [ "master" ]
 
 jobs:
-  trigger_build:
+  build-and-deploy:
     runs-on: ubuntu-latest
 
     steps:
+      - name: Checkout repository
+        uses: actions/checkout@v2
+
       - name: Set up environment variables
-        env:
-          CAPTAIN_TOKEN: ${{ secrets.CAPTAIN_TOKEN }}
+        run: echo "CAPTAIN_TOKEN=${{ secrets.CAPTAIN_TOKEN }}" >> $GITHUB_ENV
+
+      - name: Trigger CapRover Build
         run: |
           curl -X POST \
           -H "Content-Type: application/json" \
           -d '{"namespace": "captain"}' \
-          "https://captain.sharkserver.kowalinski.dev/api/v2/user/apps/webhooks/triggerbuild?namespace=captain&token=${CAPTAIN_TOKEN}"
+          "https://captain.sharkserver.kowalinski.dev/api/v2/user/apps/webhooks/triggerbuild?namespace=captain&token=${{ env.CAPTAIN_TOKEN }}"
+
+      - name: Verify Build Trigger
+        run: |
+          echo "Build trigger response:"
+          curl -X POST \
+          -H "Content-Type: application/json" \
+          -d '{"namespace": "captain"}' \
+          "https://captain.sharkserver.kowalinski.dev/api/v2/user/apps/webhooks/triggerbuild?namespace=captain&token=${{ env.CAPTAIN_TOKEN }}"
+
+      - name: Check CapRover Build Status
+        run: |
+          curl -X GET \
+          -H "Content-Type: application/json" \
+          "https://captain.sharkserver.kowalinski.dev/api/v2/user/apps/webhooks/buildstatus?namespace=captain&token=${{ env.CAPTAIN_TOKEN }}" 

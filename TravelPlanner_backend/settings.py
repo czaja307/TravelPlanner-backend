@@ -86,7 +86,7 @@ SPECTACULAR_SETTINGS = {
     'DESCRIPTION': 'API for Travel Planner',
     'VERSION': '1.0.0',
     'CONTACT': {
-        'name': 'Apolonia Abramowicz & Jakub Czajkowski',
+        'name': 'Apolonia Abramowicz & Kuba Czajkowski',
         'email': '272709@student.pwr.edu.pl',
     },
     'LICENSE': {

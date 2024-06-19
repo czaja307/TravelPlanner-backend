@@ -8,6 +8,7 @@ from django.shortcuts import get_object_or_404
 from rest_framework import generics, permissions
 from rest_framework import status
 from rest_framework import viewsets
+from rest_framework.exceptions import ValidationError
 from rest_framework.generics import GenericAPIView, ListAPIView
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
@@ -89,6 +90,20 @@ class VisitViewSet(viewsets.ModelViewSet):
     def get_queryset(self):
         return self.queryset.filter(itinerary__user=self.request.user)
 
+    def perform_create(self, serializer):
+        place = serializer.validated_data.get('place')
+
+        if place:
+            # Check if the place object is valid or meets certain criteria
+            if place.is_valid():  # You should define a method like is_valid() in your Place model
+                serializer.save(duration=place.get_estimated_duration())
+            else:
+                # Handle the case where the place object is not valid
+                raise ValidationError("The place object is not valid.")
+        else:
+            # Handle the case where place is None or not found in validated_data
+            raise ValidationError("No valid place object found.")
+
 
 class OptimizeRouteView(GenericAPIView):
     serializer_class = OptimizeRouteSerializer
@@ -151,7 +166,7 @@ class OptimizeRouteView(GenericAPIView):
         for place_data in places_data:
             place = get_object_or_404(Place, pk=place_data['place_id'])
             places.append(place)
-            durations.append(place_data['duration'])
+            durations.append(place.get_estimated_duration())
 
         return itinerary, places, durations
 
@@ -178,7 +193,7 @@ class OptimizeRouteView(GenericAPIView):
             openrouteservice.optimization.Job(
                 id=idx,
                 location=coord,
-                service=duration * 60  # Duration in seconds
+                service=duration * 60
             ) for idx, (coord, duration) in enumerate(zip(coordinates, durations))
         ]
         return jobs

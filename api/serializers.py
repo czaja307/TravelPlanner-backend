@@ -59,21 +59,21 @@ class VisitSerializer(serializers.ModelSerializer):
     place_name = serializers.CharField(source='place.name', read_only=True)
     latitude = serializers.FloatField(source='place.latitude', read_only=True)
     longitude = serializers.FloatField(source='place.longitude', read_only=True)
+    duration = serializers.IntegerField(read_only=True)
 
     class Meta:
         model = Visit
         fields = '__all__'
 
 
-class PlaceDurationSerializer(serializers.Serializer):
+class PlaceIdSerializer(serializers.Serializer):
     place_id = serializers.IntegerField()
-    duration = serializers.FloatField()  # Duration in hours
 
 
 class OptimizeRouteSerializer(serializers.Serializer):
     itinerary_id = serializers.IntegerField()
     places = serializers.ListField(
-        child=PlaceDurationSerializer()
+        child=PlaceIdSerializer()
     )
 
 
