@@ -55,9 +55,10 @@ class Place(models.Model):
             'fast food': 30,
             'mall': 120,
             'shop': 60,
-            'museum': 120,
+            'museum': 180,
             'stadium': 90,
             'nature reserve': 120,
+            'art gallery': 150,
         }
 
         for key, duration in category_durations.items():
