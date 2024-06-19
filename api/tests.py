@@ -15,14 +15,14 @@ django.setup()
 @pytest.fixture
 @pytest.mark.django_db
 def user(request):
-    # Generowanie unikalnej nazwy użytkownika dla każdego testu
+    # Generate a unique username to avoid conflicts
     unique_username = f'testuser_{uuid.uuid4()}'
     test_user = User.objects.create_user(username=unique_username, password='12345')
 
-    # Sprawdzenie, czy użytkownik jest zapisany w bazie danych
+    # Check if the user was saved in the database
     assert test_user.pk is not None, "User was not saved in the database"
 
-    # Czyszczenie po teście
+    # Cleanup after the test
     def teardown():
         if test_user.pk is not None:
             test_user.delete()
@@ -31,7 +31,7 @@ def user(request):
     return test_user
 
 
-# Przykład testu korzystającego z fixture 'user'
+# Example test using the user fixture
 @pytest.mark.django_db
 def test_user_creation(user):
     assert user.username.startswith('testuser_')
@@ -69,12 +69,12 @@ def test_itinerary_creation(itinerary):
 
 @pytest.mark.django_db
 def test_itinerary_days_count(itinerary):
-    assert itinerary.days_count == 10  # Update this if `days_count` is calculated differently
+    assert itinerary.days_count == 10
 
 
 @pytest.mark.django_db
 def test_itinerary_str_representation(itinerary):
-    assert str(itinerary) == 'Test Itinerary'  # Adjust based on your model's __str__ method
+    assert str(itinerary) == 'Test Itinerary'
 
 
 @pytest.mark.django_db
@@ -130,7 +130,6 @@ def test_itinerary_within_date_range(user):
         start_place_latitude=0.0,
         start_place_longitude=0.0,
     )
-    # Add appropriate assertions to the test
     assert itinerary.start_date == date(2023, 1, 5)
     assert itinerary.end_date == date(2023, 1, 15)
     assert itinerary.start_hour == time(9, 0)
@@ -150,7 +149,6 @@ def test_itinerary_exceed_date_range(user):
         start_place_latitude=0.0,
         start_place_longitude=0.0,
     )
-    # Add appropriate assertions to the test
     assert itinerary.start_date == date(2023, 1, 1)
     assert itinerary.end_date == date(2023, 1, 20)
     assert itinerary.start_hour == time(9, 0)
